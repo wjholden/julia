@@ -1053,13 +1053,13 @@ function rmprocs(pids...; waitfor=typemax(Int))
 
     pids = vcat(pids...)
     if waitfor == 0
-        t = @async _rmprocs(pids, typemax(Int))
+        t = Threads.@spawn _rmprocs(pids, typemax(Int))
         yield()
         return t
     else
         _rmprocs(pids, waitfor)
         # return a dummy task object that user code can wait on.
-        return @async nothing
+        return Threads.@spawn nothing
     end
 end
 

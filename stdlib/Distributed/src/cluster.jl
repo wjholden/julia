@@ -193,17 +193,17 @@ function wait_for_conn(w)
         timeout =  worker_timeout() - (time() - w.ct_time)
         timeout <= 0 && error("peer $(w.id) has not connected to $(myid())")
 
-        @async begin
-            sleep(timeout)
+        T = Threads.@spawn begin
+            sleep($timeout)
             lock(w.c_state) do
-                # Note: This could wakeup other listeners on `c_state`
                 notify(w.c_state; all=true)
             end
         end
+        errormonitor(T)
         lock(w.c_state) do
             wait(w.c_state)
-            w.state === W_CREATED && error("peer $(w.id) didn't connect to $(myid()) within $timeout seconds")
         end
+        w.state === W_CREATED && error("peer $(w.id) didn't connect to $(myid()) within $timeout seconds")
     end
     nothing
 end
@@ -325,7 +325,7 @@ function read_worker_host_port(io::IO)
     leader = String[]
     try
         while ntries > 0
-            readtask = @async readline(io)
+            readtask = Threads.@spawn readline(io)
             yield()
             while !istaskdone(readtask) && ((time_ns() - t0) < timeout)
                 sleep(0.05)
@@ -482,6 +482,10 @@ function addprocs_locked(manager::ClusterManager; kwargs...)
     # The `launch` method should add an object of type WorkerConfig for every
     # worker launched. It provides information required on how to connect
     # to it.
+
+    # FIXME: launched should be a Channel, launch_ntfy should be a Threads.Condition
+    # but both are part of the public interface. This means we currently can't use
+    # `Threads.@spawn` in the code below.
     launched = WorkerConfig[]
     launch_ntfy = Condition()
 
@@ -492,16 +496,19 @@ function addprocs_locked(manager::ClusterManager; kwargs...)
 
     @sync begin
         while true
-            if isempty(launched) # XXX: Turn this into a Channel
+            if isempty(launched)
                 istaskdone(t_launch) && break
-                @async (sleep(1); notify(launch_ntfy))
+                @async begin
+                    sleep(1)
+                    notify(launch_ntfy)
+                end
                 wait(launch_ntfy)
             end
 
             if !isempty(launched)
                 wconfig = popfirst!(launched)
                 let wconfig=wconfig
-                    Threads.@spawn setup_launched_worker(manager, wconfig, launched_q)
+                    @async setup_launched_worker(manager, wconfig, launched_q)
                 end
             end
         end
@@ -652,7 +659,6 @@ function create_worker(manager, wconfig)
                     lock(jw.c_state) do
                        wait(jw.c_state)
                     end
-                    # Note: jw.state could still be in W_CREATED if we got woke to early,
                 end
                 push!(join_list, jw)
             end
@@ -681,7 +687,6 @@ function create_worker(manager, wconfig)
                 lock(wl.c_state) do
                    wait(wl.c_state)
                 end
-                # Note: wl.state could still be in W_CREATED if we got woke to early,
             end
             push!(join_list, wl)
         end
@@ -699,7 +704,11 @@ function create_worker(manager, wconfig)
     @async manage(w.manager, w.id, w.config, :register)
     # wait for rr_ntfy_join with timeout
     timedout = false
-    @async (sleep($timeout); timedout = true; put!(rr_ntfy_join, 1))
+    @async begin
+        sleep($timeout)
+        timedout = true
+        put!(rr_ntfy_join, 1)
+    end
     wait(rr_ntfy_join)
     if timedout
         error("worker did not connect within $timeout seconds")

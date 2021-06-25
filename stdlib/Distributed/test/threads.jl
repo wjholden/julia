@@ -46,8 +46,8 @@ isfailed(rr) = fetch_from_owner(istaskfailed, rr)
 
             # Wait on the spawned tasks on the owner
             @sync begin
-                @async fetch_from_owner(wait, recv)
-                @async fetch_from_owner(wait, send)
+                Threads.@spawn fetch_from_owner(wait, recv)
+                Threads.@spawn fetch_from_owner(wait, send)
             end
 
             # Check the tasks

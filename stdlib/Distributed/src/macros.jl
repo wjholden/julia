@@ -230,7 +230,7 @@ function remotecall_eval(m::Module, procs, ex)
         # execute locally last as we do not want local execution to block serialization
         # of the request to remote nodes.
         for _ in 1:run_locally
-            @async Core.eval(m, ex)
+            Threads.@spawn Core.eval(m, ex)
         end
     end
     nothing

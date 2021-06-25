@@ -274,7 +274,7 @@ function send_del_client(rr)
         w = worker_from_id(rr.where)::Worker
         msg = (remoteref_id(rr), myid())
         # We cannot acquire locks from finalizers
-        @async begin
+        Threads.@spawn begin
             lock(w.msg_lock) do
                 push!(w.del_msgs, msg)
                 w.gcflag = true

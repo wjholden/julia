@@ -11,6 +11,9 @@ New language features
 Language changes
 ----------------
 
+* Newly created Task objects (`@spawn`, `@async`, etc.) now adopt the world-age for methods from their parent
+  task, instead of using the global latest world. This is done to enable inference to eventually optimize
+  these calls. Callees that wish for the old behavior may use `Base.invokelatest`. ([#TBD])
 
 Compiler/Runtime improvements
 -----------------------------
